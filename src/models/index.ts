@@ -1,3 +1,4 @@
 import UserSchema from "./user";
+import TokenSchema from "./token";
 
-export { UserSchema };
+export { UserSchema, TokenSchema };

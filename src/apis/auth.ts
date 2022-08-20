@@ -3,9 +3,11 @@ require("dotenv").config();
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
-import controllers from "../controllers";
 import { LoginObject, RegistryObject } from "../interfaces/global";
+import controllers from "../controllers";
+import Utils from "../utils";
 
 const registry = async (req: Request, res: Response) => {
     try {
@@ -81,9 +83,39 @@ const login = async (req: Request, res: Response) => {
     }
 };
 
+const passwordreset = async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+
+        const user = await controllers.Auth.find({ filter: { email: email } });
+        if (!user)
+            return res.status(400).send("User With Given Email Doesn't Exist");
+
+        let token = await controllers.Token.find({
+            filter: { userId: user._id },
+        });
+
+        if (!token) {
+            token = await controllers.Token.create({
+                userId: user._id,
+                token: crypto.randomBytes(32).toString("hex"),
+            });
+        }
+
+        const link = `${process.env.BASE_URL}/reset/${user._id}/${token.token}`;
+        await Utils.sendEmail(user.email, "Password reset", link);
+
+        res.status(200).send("password reset link sent to your email account");
+    } catch (err: any) {
+        console.log(err);
+        res.status(500).send(err.message);
+    }
+};
+
 const middleware = async (req: any, res: Response, next: NextFunction) => {
     try {
         const token = <string>req.headers["authorization"] || "";
+        console.log(token);
 
         jwt.verify(
             token,
@@ -107,4 +139,4 @@ const middleware = async (req: any, res: Response, next: NextFunction) => {
     }
 };
 
-export default { login, registry, middleware };
+export default { login, registry, passwordreset, middleware };
