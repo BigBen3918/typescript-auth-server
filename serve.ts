@@ -22,6 +22,16 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Frontend Load
+app.use(express.static(__dirname + "/build"));
+app.get("/*", function (req, res) {
+    res.sendFile(__dirname + "/build/index.html", function (err) {
+        if (err) {
+            res.status(500).send(err);
+        }
+    });
+});
+
 // API Router
 API(router);
 app.use("/api", router);
