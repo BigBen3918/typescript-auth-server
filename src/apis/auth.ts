@@ -1,24 +1,30 @@
 require("dotenv").config();
 
 import { Request, Response, NextFunction } from "express";
+import { OAuth2Client } from "google-auth-library";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
 import { LoginObject, RegistryObject } from "../interfaces/global";
 import controllers from "../controllers";
-import Utils from "../utils";
+// import Utils from "../utils";
 
+const googleClient = new OAuth2Client({
+    clientId: `${process.env.OAUTH_CLIENTID}`,
+});
+
+// Normal Auth
 const registry = async (req: Request, res: Response) => {
     try {
         const { name, email, password }: RegistryObject = req.body;
 
-        if (!(email && password && name)) {
+        if (!(email.trim() && password.trim() && name.trim())) {
             return res.status(400).send("Please enter all required data.");
         } // Check user
 
         const oldUser = await controllers.Auth.find({
-            filter: { email: email },
+            filter: { email: email.toLowerCase().trim() },
         });
 
         if (oldUser) {
@@ -29,7 +35,7 @@ const registry = async (req: Request, res: Response) => {
 
         const result = await controllers.Auth.create({
             name: name,
-            email: email,
+            email: email.toLowerCase().trim(),
             password: encryptedPassword,
         }); // Save user data
 
@@ -50,11 +56,13 @@ const login = async (req: Request, res: Response) => {
     try {
         const { email, password }: LoginObject = req.body;
 
-        if (!(email && password)) {
+        if (!(email.trim() && password.trim())) {
             return res.status(400).send("Please Enter All Required Data.");
         }
 
-        const user = await controllers.Auth.find({ filter: { email: email } });
+        const user = await controllers.Auth.find({
+            filter: { email: email.toLowerCase().trim() },
+        });
 
         if (!user) {
             // User check
@@ -66,7 +74,7 @@ const login = async (req: Request, res: Response) => {
         if (pass) {
             // Password check
             const token = jwt.sign(
-                { user_id: user._id, email },
+                { user_id: user._id, email: email.toLowerCase().trim() },
                 String(process.env.TOKEN_KEY),
                 {
                     expiresIn: "2h",
@@ -102,8 +110,8 @@ const passwordreset = async (req: Request, res: Response) => {
             });
         }
 
-        const link = `${process.env.BASE_URL}/reset/${user._id}/${token.token}`;
-        await Utils.sendEmail(user.email, "Password reset", link);
+        // const link = `${process.env.BASE_URL}/reset/${user._id}/${token.token}`;
+        // await Utils.sendEmail(user.email, "Password reset", link);
 
         res.status(200).send("password reset link sent to your email account");
     } catch (err: any) {
@@ -112,6 +120,46 @@ const passwordreset = async (req: Request, res: Response) => {
     }
 };
 
+// Gmail Auth
+const glogin = async (req: Request, res: Response) => {
+    try {
+        const { token } = req.body;
+        console.log(token);
+        const ticket = await googleClient.verifyIdToken({
+            idToken: token,
+            audience: process.env.OAUTH_CLIENTID,
+        });
+
+        const payload = ticket.getPayload();
+
+        var user: any = await controllers.Auth.find({
+            filter: { email: payload?.email },
+        });
+
+        if (!user) {
+            user = await controllers.Auth.create({
+                name: payload?.name,
+                email: payload?.email,
+                password: "",
+            });
+        }
+
+        const jwtToken = jwt.sign(
+            { user_id: user._id, email: payload?.email },
+            String(process.env.TOKEN_KEY),
+            {
+                expiresIn: "2h",
+            }
+        );
+
+        res.status(200).json({ token: jwtToken });
+    } catch (err: any) {
+        console.log("glogin error", err.message);
+        res.status(500).send(err.message);
+    }
+};
+
+// Middleware
 const middleware = async (req: any, res: Response, next: NextFunction) => {
     try {
         const token = <string>req.headers["authorization"] || "";
@@ -139,4 +187,10 @@ const middleware = async (req: any, res: Response, next: NextFunction) => {
     }
 };
 
-export default { login, registry, passwordreset, middleware };
+export default {
+    login,
+    registry,
+    passwordreset,
+    glogin,
+    middleware,
+};

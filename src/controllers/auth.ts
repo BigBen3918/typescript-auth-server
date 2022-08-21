@@ -17,7 +17,7 @@ const Auth = {
                 throw new Error("Database Error");
             }
 
-            return true;
+            return saveData;
         } catch (err: any) {
             throw new Error(err.message);
         }
