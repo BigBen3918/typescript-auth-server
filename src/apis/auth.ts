@@ -8,7 +8,7 @@ import crypto from "crypto";
 
 import { LoginObject, RegistryObject } from "../interfaces/global";
 import controllers from "../controllers";
-// import Utils from "../utils";
+import Utils from "../utils";
 
 const googleClient = new OAuth2Client({
     clientId: `${process.env.OAUTH_CLIENTID}`,
@@ -37,9 +37,18 @@ const registry = async (req: Request, res: Response) => {
             name: name,
             email: email.toLowerCase().trim(),
             password: encryptedPassword,
+            verify: false
         }); // Save user data
 
-        if (result) {
+        let token = await controllers.Token.create({
+            userId: result._id,
+            token: crypto.randomBytes(32).toString("hex"),
+        });
+
+        const link = `${process.env.BASE_URL}api/user-verify/${result._id}/${token.token}`;
+        const sendVerify = await Utils.sendEmail(result.email, "New User Verify", link);
+
+        if (sendVerify) {
             res.status(200).json({
                 success: true,
             });
@@ -72,6 +81,9 @@ const login = async (req: Request, res: Response) => {
         const pass = await bcrypt.compare(password, user.password);
 
         if (pass) {
+            if (!user.verify) {
+                return res.status(403).send("User Not Verified. Please Verify");
+            }
             // Password check
             const token = jwt.sign(
                 { user_id: user._id, email: email.toLowerCase().trim() },
@@ -110,10 +122,16 @@ const passwordreset = async (req: Request, res: Response) => {
             });
         }
 
-        // const link = `${process.env.BASE_URL}/reset/${user._id}/${token.token}`;
-        // await Utils.sendEmail(user.email, "Password reset", link);
+        const link = `${process.env.BASE_URL}api/reset/${user._id}/${token.token}`;
+        const result = await Utils.sendEmail(user.email, "Password reset", link);
 
-        res.status(200).send("password reset link sent to your email account");
+        if (result) {
+            res.status(200).json({
+                success: true
+            });
+        } else {
+            throw new Error("Mailing Error");
+        }
     } catch (err: any) {
         console.log(err);
         res.status(500).send(err.message);
@@ -141,6 +159,7 @@ const glogin = async (req: Request, res: Response) => {
                 name: payload?.name,
                 email: payload?.email,
                 password: "",
+                verify: true,
             });
         }
 
@@ -158,6 +177,56 @@ const glogin = async (req: Request, res: Response) => {
         res.status(500).send(err.message);
     }
 };
+
+const handleverify = async (req: Request, res: Response) => {
+    try {
+        const user = await controllers.Auth.fintById({ param: req.params.userId });
+        if (!user) return res.status(400).send("invalid link or expired");
+
+        const token = await controllers.Token.find({
+            filter: {
+                userId: user._id,
+                token: req.params.token,
+            }
+        });
+
+        if (!token) return res.status(400).send("Invalid link or expired");
+
+        user.verify = true;
+        await user.save();
+        await token.delete();
+
+        res.redirect("http://localhost:3000");
+    } catch (err: any) {
+        console.log(err);
+        res.status(500).send(err.message);
+    }
+}
+
+const handlereset = async (req: Request, res: Response) => {
+    try {
+        const user = await controllers.Auth.fintById({ param: req.params.userId });
+        if (!user) return res.status(400).send("invalid link or expired");
+
+        const token = await controllers.Token.find({
+            filter: {
+                userId: user._id,
+                token: req.params.token,
+            }
+        });
+
+        if (!token) return res.status(400).send("Invalid link or expired");
+
+        user.password = "";
+        await user.save();
+        await token.delete();
+
+        res.redirect("http://localhost:3000");
+    } catch (err: any) {
+        console.log(err);
+        res.status(500).send(err.message);
+    }
+}
 
 // Middleware
 const middleware = async (req: any, res: Response, next: NextFunction) => {
@@ -192,5 +261,7 @@ export default {
     registry,
     passwordreset,
     glogin,
+    handlereset,
+    handleverify,
     middleware,
 };

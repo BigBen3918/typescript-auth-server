@@ -2,13 +2,14 @@ import { UserSchema } from "../models";
 
 const Auth = {
     create: async (props: any) => {
-        const { name, email, password } = props;
+        const { name, email, password, verify } = props;
 
         try {
             const newData = new UserSchema({
                 name: name,
                 email: email,
                 password: password,
+                verify: verify
             });
 
             const saveData = await newData.save();
@@ -33,6 +34,16 @@ const Auth = {
             throw new Error(err.message);
         }
     },
+    fintById: async (props: any) => {
+        const { param } = props;
+        try {
+            const result = await UserSchema.findById(param);
+
+            return result;
+        } catch (err: any) {
+            throw new Error(err.message);
+        }
+    }
 };
 
 export default Auth;
