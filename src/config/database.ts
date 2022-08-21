@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const ConnectDatabase = (mongoUrl: string) => {
+const ConnectDatabase = async (mongoUrl: string) => {
     try {
         const connectOptions: mongoose.ConnectOptions = {
             autoCreate: true,
@@ -8,7 +8,7 @@ const ConnectDatabase = (mongoUrl: string) => {
             retryReads: true,
         };
 
-        const result: any = mongoose.connect(mongoUrl, connectOptions);
+        const result: any = await mongoose.connect(mongoUrl, connectOptions);
 
         if (result) {
             console.log("MongoDB connected");
